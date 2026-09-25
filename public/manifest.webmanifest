@@ -1,0 +1,9 @@
+{
+  "name": "SiteOS Construction Operations Platform",
+  "short_name": "SiteOS",
+  "description": "Open-source construction site and technical-office operations platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a"
+}
