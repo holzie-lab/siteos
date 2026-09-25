@@ -28,3 +28,21 @@ Records can include daily reports, materials, quality inspections, drawings, RFI
 ## Planning integration
 
 Schedule interoperability should use a normalized internal representation. Parsers may support formats such as Primavera P6 XER, but production schedule files must never be committed to this repository.
+
+## Project membership and authorization
+
+SiteOS uses project-scoped membership rather than global application roles.
+
+Supported project roles:
+
+| Role | View | Manage members/project | Core field/office records | Quality | Planning |
+| --- | --- | --- | --- | --- | --- |
+| Admin | Yes | Yes | Yes | Yes | Yes |
+| Project Manager | Yes | Yes | Yes | Yes | Yes |
+| Technical Office | Yes | No | Yes | Yes | Yes |
+| Site Engineer | Yes | No | Yes | No | No |
+| QA/QC | Yes | No | No | Yes | No |
+| Planner | Yes | No | No | No | Yes |
+| Viewer | Yes | No | No | No | No |
+
+The project creator is automatically bootstrapped as an admin member. Database Row Level Security remains the enforcement layer; UI controls are not treated as authorization boundaries.
