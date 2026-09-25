@@ -169,3 +169,67 @@ create policy rfis_write_own_project on public.rfis for all to authenticated
 using (public.owns_project(project_id)) with check (public.owns_project(project_id));
 
 grant select, insert, update, delete on public.quality_records, public.drawings, public.rfis to authenticated;
+
+create table if not exists public.daily_reports (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  activity_id uuid references public.activities(id) on delete set null,
+  report_date date not null,
+  weather text,
+  manpower integer not null default 0 check (manpower >= 0),
+  progress_notes text not null,
+  shift_notes text,
+  status text not null default 'draft' check (status in ('draft','submitted','approved')),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.materials (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  code text not null,
+  name text not null,
+  unit text not null,
+  minimum_stock numeric not null default 0 check (minimum_stock >= 0),
+  created_at timestamptz not null default now(),
+  unique(project_id, code)
+);
+
+create table if not exists public.material_movements (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  material_id uuid not null references public.materials(id) on delete cascade,
+  activity_id uuid references public.activities(id) on delete set null,
+  movement_type text not null check (movement_type in ('in','out')),
+  quantity numeric not null check (quantity > 0),
+  movement_date date not null,
+  reference_no text,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.daily_reports enable row level security;
+alter table public.materials enable row level security;
+alter table public.material_movements enable row level security;
+
+drop policy if exists daily_reports_select_own_project on public.daily_reports;
+drop policy if exists daily_reports_write_own_project on public.daily_reports;
+create policy daily_reports_select_own_project on public.daily_reports for select to authenticated
+using (public.owns_project(project_id));
+create policy daily_reports_write_own_project on public.daily_reports for all to authenticated
+using (public.owns_project(project_id)) with check (public.owns_project(project_id));
+
+drop policy if exists materials_select_own_project on public.materials;
+drop policy if exists materials_write_own_project on public.materials;
+create policy materials_select_own_project on public.materials for select to authenticated
+using (public.owns_project(project_id));
+create policy materials_write_own_project on public.materials for all to authenticated
+using (public.owns_project(project_id)) with check (public.owns_project(project_id));
+
+drop policy if exists material_movements_select_own_project on public.material_movements;
+drop policy if exists material_movements_write_own_project on public.material_movements;
+create policy material_movements_select_own_project on public.material_movements for select to authenticated
+using (public.owns_project(project_id));
+create policy material_movements_write_own_project on public.material_movements for all to authenticated
+using (public.owns_project(project_id)) with check (public.owns_project(project_id));
+
+grant select, insert, update, delete on public.daily_reports, public.materials, public.material_movements to authenticated;

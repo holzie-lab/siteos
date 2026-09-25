@@ -45,3 +45,29 @@ test('validates RFI identity and workflow', async()=>{
   assert.equal(value.rfi_no,'RFI-010')
   assert.deepEqual(validateRfi(value),[])
 })
+
+test('validates a synthetic daily report', async()=>{
+  const { normalizeDailyReport, validateDailyReport } = await import('../src/lib/domain.js')
+  const value=normalizeDailyReport({
+    project_id:'demo-project',
+    activity_id:'demo-activity',
+    report_date:'2026-09-25',
+    weather:'Clear',
+    manpower:'12',
+    progress_notes:'Synthetic progress update for Nova Build Demo.',
+    status:'submitted'
+  })
+  assert.equal(value.manpower,12)
+  assert.deepEqual(validateDailyReport(value),[])
+})
+
+test('validates synthetic materials and calculates stock', async()=>{
+  const { normalizeMaterial, validateMaterial, normalizeMaterialMovement, validateMaterialMovement, calculateStock } = await import('../src/lib/domain.js')
+  const material=normalizeMaterial({project_id:'demo-project',code:' mat-01 ',name:'Demo Reinforcement Steel',unit:'t',minimum_stock:'5'})
+  assert.equal(material.code,'MAT-01')
+  assert.deepEqual(validateMaterial(material),[])
+  const moveIn=normalizeMaterialMovement({project_id:'demo-project',material_id:'m1',movement_type:'in',quantity:'10',movement_date:'2026-09-25'})
+  const moveOut=normalizeMaterialMovement({project_id:'demo-project',material_id:'m1',movement_type:'out',quantity:'3',movement_date:'2026-09-25'})
+  assert.deepEqual(validateMaterialMovement(moveIn),[])
+  assert.equal(calculateStock('m1',[moveIn,moveOut]),7)
+})
