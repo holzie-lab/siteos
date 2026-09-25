@@ -174,3 +174,43 @@ export function calculateStock(materialId, movements){
     .filter(x=>x.material_id===materialId)
     .reduce((sum,row)=>sum+(row.movement_type==='in'?Number(row.quantity):-Number(row.quantity)),0)
 }
+
+export const PROJECT_ROLES = [
+  'admin',
+  'project_manager',
+  'technical_office',
+  'site_engineer',
+  'qa_qc',
+  'planner',
+  'viewer'
+]
+
+const ROLE_CAPABILITIES = {
+  admin: ['view','manage','core','quality','planning'],
+  project_manager: ['view','manage','core','quality','planning'],
+  technical_office: ['view','core','quality','planning'],
+  site_engineer: ['view','core'],
+  qa_qc: ['view','quality'],
+  planner: ['view','planning'],
+  viewer: ['view']
+}
+
+export function roleCan(role, capability){
+  return Boolean(ROLE_CAPABILITIES[role]?.includes(capability))
+}
+
+export function normalizeMembership(input){
+  return {
+    project_id: input.project_id,
+    user_id: trim(input.user_id),
+    role: input.role || 'viewer'
+  }
+}
+
+export function validateMembership(row){
+  const errors=[]
+  if(!row.project_id) errors.push('Project is required.')
+  if(!row.user_id) errors.push('User ID is required.')
+  if(!PROJECT_ROLES.includes(row.role)) errors.push('Project role is invalid.')
+  return errors
+}

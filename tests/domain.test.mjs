@@ -71,3 +71,27 @@ test('validates synthetic materials and calculates stock', async()=>{
   assert.deepEqual(validateMaterialMovement(moveIn),[])
   assert.equal(calculateStock('m1',[moveIn,moveOut]),7)
 })
+
+test('project roles follow least-privilege capability rules', async()=>{
+  const { roleCan } = await import('../src/lib/domain.js')
+  assert.equal(roleCan('viewer','view'),true)
+  assert.equal(roleCan('viewer','core'),false)
+  assert.equal(roleCan('site_engineer','core'),true)
+  assert.equal(roleCan('site_engineer','quality'),false)
+  assert.equal(roleCan('qa_qc','quality'),true)
+  assert.equal(roleCan('qa_qc','planning'),false)
+  assert.equal(roleCan('planner','planning'),true)
+  assert.equal(roleCan('planner','manage'),false)
+  assert.equal(roleCan('technical_office','core'),true)
+  assert.equal(roleCan('technical_office','quality'),true)
+  assert.equal(roleCan('technical_office','planning'),true)
+  assert.equal(roleCan('project_manager','manage'),true)
+  assert.equal(roleCan('admin','manage'),true)
+})
+
+test('validates project memberships', async()=>{
+  const { normalizeMembership, validateMembership } = await import('../src/lib/domain.js')
+  const value=normalizeMembership({project_id:'demo-project',user_id:'00000000-0000-4000-8000-000000000001',role:'viewer'})
+  assert.deepEqual(validateMembership(value),[])
+  assert.ok(validateMembership(normalizeMembership({project_id:'demo-project',user_id:'',role:'unknown'})).length>=2)
+})
