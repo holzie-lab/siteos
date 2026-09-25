@@ -45,3 +45,66 @@ export function validateActivity(activity){
   if(activity.quantity!==null&&!activity.unit) errors.push('Unit is required when quantity is set.')
   return errors
 }
+
+export function normalizeQuality(input){
+  return {
+    project_id: input.project_id,
+    activity_id: input.activity_id || null,
+    record_no: trim(input.record_no).toUpperCase(),
+    record_type: input.record_type || 'inspection',
+    title: trim(input.title),
+    status: input.status || 'open',
+    result: input.result || 'pending',
+    record_date: input.record_date || null
+  }
+}
+export function validateQuality(row){
+  const errors=[]
+  if(!row.project_id) errors.push('Project is required.')
+  if(!row.record_no) errors.push('Quality record number is required.')
+  if(!row.title) errors.push('Quality title is required.')
+  if(!new Set(['inspection','itp','ncr','test']).has(row.record_type)) errors.push('Quality record type is invalid.')
+  if(!new Set(['open','closed','approved']).has(row.status)) errors.push('Quality status is invalid.')
+  if(!new Set(['pending','passed','failed','conditional']).has(row.result)) errors.push('Quality result is invalid.')
+  return errors
+}
+export function normalizeDrawing(input){
+  return {
+    project_id: input.project_id,
+    activity_id: input.activity_id || null,
+    drawing_no: trim(input.drawing_no).toUpperCase(),
+    title: trim(input.title),
+    revision: trim(input.revision).toUpperCase(),
+    status: input.status || 'current',
+    issued_at: input.issued_at || null
+  }
+}
+export function validateDrawing(row){
+  const errors=[]
+  if(!row.project_id) errors.push('Project is required.')
+  if(!row.drawing_no) errors.push('Drawing number is required.')
+  if(!row.title) errors.push('Drawing title is required.')
+  if(!row.revision) errors.push('Revision is required.')
+  if(!new Set(['current','superseded','hold','approved']).has(row.status)) errors.push('Drawing status is invalid.')
+  return errors
+}
+export function normalizeRfi(input){
+  return {
+    project_id: input.project_id,
+    activity_id: input.activity_id || null,
+    rfi_no: trim(input.rfi_no).toUpperCase(),
+    subject: trim(input.subject),
+    status: input.status || 'open',
+    priority: input.priority || 'normal',
+    due_date: input.due_date || null
+  }
+}
+export function validateRfi(row){
+  const errors=[]
+  if(!row.project_id) errors.push('Project is required.')
+  if(!row.rfi_no) errors.push('RFI number is required.')
+  if(!row.subject) errors.push('RFI subject is required.')
+  if(!new Set(['open','answered','closed']).has(row.status)) errors.push('RFI status is invalid.')
+  if(!new Set(['low','normal','high']).has(row.priority)) errors.push('RFI priority is invalid.')
+  return errors
+}

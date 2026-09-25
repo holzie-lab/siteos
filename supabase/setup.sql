@@ -102,3 +102,70 @@ with check (public.owns_project(project_id));
 
 grant select, insert, update, delete on public.projects, public.areas, public.activities to authenticated;
 grant execute on function public.owns_project(uuid) to authenticated;
+
+create table if not exists public.quality_records (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  activity_id uuid references public.activities(id) on delete set null,
+  record_no text not null,
+  record_type text not null check (record_type in ('inspection','itp','ncr','test')),
+  title text not null,
+  status text not null default 'open' check (status in ('open','closed','approved')),
+  result text not null default 'pending' check (result in ('pending','passed','failed','conditional')),
+  record_date date,
+  created_at timestamptz not null default now(),
+  unique(project_id, record_no)
+);
+
+create table if not exists public.drawings (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  activity_id uuid references public.activities(id) on delete set null,
+  drawing_no text not null,
+  title text not null,
+  revision text not null,
+  status text not null default 'current' check (status in ('current','superseded','hold','approved')),
+  issued_at date,
+  created_at timestamptz not null default now(),
+  unique(project_id, drawing_no, revision)
+);
+
+create table if not exists public.rfis (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete cascade,
+  activity_id uuid references public.activities(id) on delete set null,
+  rfi_no text not null,
+  subject text not null,
+  status text not null default 'open' check (status in ('open','answered','closed')),
+  priority text not null default 'normal' check (priority in ('low','normal','high')),
+  due_date date,
+  created_at timestamptz not null default now(),
+  unique(project_id, rfi_no)
+);
+
+alter table public.quality_records enable row level security;
+alter table public.drawings enable row level security;
+alter table public.rfis enable row level security;
+
+drop policy if exists quality_select_own_project on public.quality_records;
+drop policy if exists quality_write_own_project on public.quality_records;
+create policy quality_select_own_project on public.quality_records for select to authenticated
+using (public.owns_project(project_id));
+create policy quality_write_own_project on public.quality_records for all to authenticated
+using (public.owns_project(project_id)) with check (public.owns_project(project_id));
+
+drop policy if exists drawings_select_own_project on public.drawings;
+drop policy if exists drawings_write_own_project on public.drawings;
+create policy drawings_select_own_project on public.drawings for select to authenticated
+using (public.owns_project(project_id));
+create policy drawings_write_own_project on public.drawings for all to authenticated
+using (public.owns_project(project_id)) with check (public.owns_project(project_id));
+
+drop policy if exists rfis_select_own_project on public.rfis;
+drop policy if exists rfis_write_own_project on public.rfis;
+create policy rfis_select_own_project on public.rfis for select to authenticated
+using (public.owns_project(project_id));
+create policy rfis_write_own_project on public.rfis for all to authenticated
+using (public.owns_project(project_id)) with check (public.owns_project(project_id));
+
+grant select, insert, update, delete on public.quality_records, public.drawings, public.rfis to authenticated;
