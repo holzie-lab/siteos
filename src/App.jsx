@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { isConfigured, supabase } from './lib/supabase'
-import { normalizeActivity, normalizeArea, normalizeProject, validateActivity, validateArea, validateProject } from './lib/domain'
+import { normalizeActivity, normalizeArea, normalizeDrawing, normalizeProject, normalizeQuality, normalizeRfi, validateActivity, validateArea, validateDrawing, validateProject, validateQuality, validateRfi } from './lib/domain'
 
 const modules = [
   ['today','Today'],['projects','Projects'],['activities','Activities'],['reports','Daily Reports'],
@@ -15,6 +15,15 @@ const demo = {
     {id:'demo-act-1',project_id:'demo-project',area_id:'demo-area-1',code:'ACT-001',name:'Foundation Works',progress:60,status:'in_progress',unit:'m3',quantity:120},
     {id:'demo-act-2',project_id:'demo-project',area_id:'demo-area-1',code:'ACT-002',name:'Structural Works',progress:35,status:'in_progress',unit:'t',quantity:42},
     {id:'demo-act-3',project_id:'demo-project',area_id:null,code:'ACT-003',name:'Utility Works',progress:10,status:'planned',unit:'m',quantity:300}
+  ],
+  quality:[
+    {id:'demo-q-1',project_id:'demo-project',activity_id:'demo-act-1',record_no:'Q-001',record_type:'inspection',title:'Foundation pre-pour inspection',status:'approved',result:'passed',record_date:'2026-09-01'}
+  ],
+  drawings:[
+    {id:'demo-d-1',project_id:'demo-project',activity_id:'demo-act-2',drawing_no:'DRW-001',title:'General arrangement',revision:'A',status:'current',issued_at:'2026-09-02'}
+  ],
+  rfis:[
+    {id:'demo-rfi-1',project_id:'demo-project',activity_id:'demo-act-2',rfi_no:'RFI-001',subject:'Clarify interface detail',status:'open',priority:'normal',due_date:'2026-09-30'}
   ]
 }
 
@@ -24,6 +33,9 @@ export default function App(){
   const [projects,setProjects]=useState(demo.projects)
   const [areas,setAreas]=useState(demo.areas)
   const [activities,setActivities]=useState(demo.activities)
+  const [quality,setQuality]=useState(demo.quality)
+  const [drawings,setDrawings]=useState(demo.drawings)
+  const [rfis,setRfis]=useState(demo.rfis)
   const [activeProjectId,setActiveProjectId]=useState(demo.projects[0].id)
   const [loading,setLoading]=useState(false)
   const [message,setMessage]=useState(isConfigured ? '' : 'Demo mode: configure Supabase to persist data.')
@@ -32,14 +44,17 @@ export default function App(){
 
   async function loadData(){
     setLoading(true)
-    const [p,a,w]=await Promise.all([
+    const [p,a,w,q,d,r]=await Promise.all([
       supabase.from('projects').select('*').order('code'),
       supabase.from('areas').select('*').order('code'),
-      supabase.from('activities').select('*').order('code')
+      supabase.from('activities').select('*').order('code'),
+      supabase.from('quality_records').select('*').order('record_no'),
+      supabase.from('drawings').select('*').order('drawing_no'),
+      supabase.from('rfis').select('*').order('rfi_no')
     ])
-    const error=p.error||a.error||w.error
+    const error=p.error||a.error||w.error||q.error||d.error||r.error
     if(error){setMessage(error.message);setLoading(false);return}
-    setProjects(p.data||[]);setAreas(a.data||[]);setActivities(w.data||[])
+    setProjects(p.data||[]);setAreas(a.data||[]);setActivities(w.data||[]);setQuality(q.data||[]);setDrawings(d.data||[]);setRfis(r.data||[])
     setActiveProjectId(current => (p.data||[]).some(x=>x.id===current) ? current : p.data?.[0]?.id || '')
     setMessage('');setLoading(false)
   }
@@ -48,6 +63,9 @@ export default function App(){
   const projectActivities=activities.filter(x=>x.project_id===activeProjectId)
   const visibleActivities=useMemo(()=>projectActivities.filter(x=>`${x.code} ${x.name}`.toLowerCase().includes(query.toLowerCase())),[projectActivities,query])
   const progress=projectActivities.length?Math.round(projectActivities.reduce((s,x)=>s+Number(x.progress||0),0)/projectActivities.length):0
+  const projectQuality=quality.filter(x=>x.project_id===activeProjectId)
+  const projectDrawings=drawings.filter(x=>x.project_id===activeProjectId)
+  const projectRfis=rfis.filter(x=>x.project_id===activeProjectId)
 
   async function createProject(values){
     const normalized=normalizeProject(values); const errors=validateProject(normalized)
@@ -87,6 +105,36 @@ export default function App(){
     setActivities(x=>x.filter(a=>a.id!==id));setMessage('Activity removed.')
   }
 
+  async function createQuality(values){
+    if(!activeProjectId)return setMessage('Create or select a project first.')
+    const normalized=normalizeQuality({...values,project_id:activeProjectId}); const errors=validateQuality(normalized)
+    if(errors.length)return setMessage(errors.join(' '))
+    if(!isConfigured){setQuality(x=>[...x,{id:crypto.randomUUID(),...normalized}]);setMessage('Quality record added in demo mode.');return}
+    const {data,error}=await supabase.from('quality_records').insert(normalized).select('*').single()
+    if(error)return setMessage(error.message)
+    setQuality(x=>[...x,data]);setMessage('Quality record saved.')
+  }
+
+  async function createDrawing(values){
+    if(!activeProjectId)return setMessage('Create or select a project first.')
+    const normalized=normalizeDrawing({...values,project_id:activeProjectId}); const errors=validateDrawing(normalized)
+    if(errors.length)return setMessage(errors.join(' '))
+    if(!isConfigured){setDrawings(x=>[...x,{id:crypto.randomUUID(),...normalized}]);setMessage('Drawing added in demo mode.');return}
+    const {data,error}=await supabase.from('drawings').insert(normalized).select('*').single()
+    if(error)return setMessage(error.message)
+    setDrawings(x=>[...x,data]);setMessage('Drawing saved.')
+  }
+
+  async function createRfi(values){
+    if(!activeProjectId)return setMessage('Create or select a project first.')
+    const normalized=normalizeRfi({...values,project_id:activeProjectId}); const errors=validateRfi(normalized)
+    if(errors.length)return setMessage(errors.join(' '))
+    if(!isConfigured){setRfis(x=>[...x,{id:crypto.randomUUID(),...normalized}]);setMessage('RFI added in demo mode.');return}
+    const {data,error}=await supabase.from('rfis').insert(normalized).select('*').single()
+    if(error)return setMessage(error.message)
+    setRfis(x=>[...x,data]);setMessage('RFI saved.')
+  }
+
   return <div className="shell">
     <aside>
       <div className="brand">SiteOS</div>
@@ -106,7 +154,10 @@ export default function App(){
       {page==='today'&&<Dashboard progress={progress} activities={projectActivities} areas={areas.filter(x=>x.project_id===activeProjectId)} />}
       {page==='projects'&&<Projects projects={projects} areas={areas.filter(x=>x.project_id===activeProjectId)} onProject={createProject} onArea={createArea} />}
       {page==='activities'&&<Activities rows={visibleActivities} areas={areas.filter(x=>x.project_id===activeProjectId)} onCreate={createActivity} onDelete={deleteActivity} />}
-      {!['today','projects','activities'].includes(page)&&<Empty title={modules.find(x=>x[0]===page)?.[1]} />}
+      {page==='quality'&&<Quality rows={projectQuality} activities={projectActivities} query={query} onCreate={createQuality} />}
+      {page==='drawings'&&<Drawings rows={projectDrawings} activities={projectActivities} query={query} onCreate={createDrawing} />}
+      {page==='rfis'&&<Rfis rows={projectRfis} activities={projectActivities} query={query} onCreate={createRfi} />}
+      {!['today','projects','activities','quality','drawings','rfis'].includes(page)&&<Empty title={modules.find(x=>x[0]===page)?.[1]} />}
     </main>
   </div>
 }
@@ -154,6 +205,61 @@ function Activities({rows,areas,onCreate,onDelete}){
       <button>Add activity</button>
     </form>
     <table><thead><tr><th>ID</th><th>Name</th><th>Area</th><th>Quantity</th><th>Progress</th><th>Status</th><th></th></tr></thead><tbody>{rows.map(x=><tr key={x.id}><td>{x.code}</td><td>{x.name}</td><td>{areas.find(a=>a.id===x.area_id)?.code||'—'}</td><td>{x.quantity??'—'} {x.unit||''}</td><td>{x.progress}%</td><td>{x.status}</td><td><button className="link danger" onClick={()=>onDelete(x.id)}>Delete</button></td></tr>)}</tbody></table></section>
+}
+
+
+function activityLabel(activities,id){const row=activities.find(x=>x.id===id);return row?`${row.code} · ${row.name}`:'—'}
+
+function Quality({rows,activities,query,onCreate}){
+  const [form,setForm]=useState({record_no:'',record_type:'inspection',title:'',activity_id:'',status:'open',result:'pending',record_date:''})
+  const visible=rows.filter(x=>`${x.record_no} ${x.title} ${x.record_type} ${x.status} ${x.result}`.toLowerCase().includes(query.toLowerCase()))
+  return <section className="panel"><h2>Quality Register</h2>
+    <form className="form register-form" onSubmit={e=>{e.preventDefault();onCreate(form);setForm({record_no:'',record_type:'inspection',title:'',activity_id:'',status:'open',result:'pending',record_date:''})}}>
+      <input placeholder="Record no" value={form.record_no} onChange={e=>setForm({...form,record_no:e.target.value})}/>
+      <select value={form.record_type} onChange={e=>setForm({...form,record_type:e.target.value})}><option value="inspection">Inspection</option><option value="itp">ITP</option><option value="ncr">NCR</option><option value="test">Test</option></select>
+      <input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/>
+      <select value={form.activity_id} onChange={e=>setForm({...form,activity_id:e.target.value})}><option value="">General project</option>{activities.map(a=><option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select>
+      <select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="open">Open</option><option value="closed">Closed</option><option value="approved">Approved</option></select>
+      <select value={form.result} onChange={e=>setForm({...form,result:e.target.value})}><option value="pending">Pending</option><option value="passed">Passed</option><option value="failed">Failed</option><option value="conditional">Conditional</option></select>
+      <input type="date" value={form.record_date} onChange={e=>setForm({...form,record_date:e.target.value})}/>
+      <button>Add quality record</button>
+    </form>
+    <table><thead><tr><th>No</th><th>Type</th><th>Title</th><th>Activity</th><th>Result</th><th>Status</th></tr></thead><tbody>{visible.map(x=><tr key={x.id}><td>{x.record_no}</td><td>{x.record_type}</td><td>{x.title}</td><td>{activityLabel(activities,x.activity_id)}</td><td>{x.result}</td><td>{x.status}</td></tr>)}</tbody></table>
+  </section>
+}
+
+function Drawings({rows,activities,query,onCreate}){
+  const [form,setForm]=useState({drawing_no:'',title:'',revision:'',activity_id:'',status:'current',issued_at:''})
+  const visible=rows.filter(x=>`${x.drawing_no} ${x.title} ${x.revision} ${x.status}`.toLowerCase().includes(query.toLowerCase()))
+  return <section className="panel"><h2>Drawing & Revision Register</h2>
+    <form className="form register-form" onSubmit={e=>{e.preventDefault();onCreate(form);setForm({drawing_no:'',title:'',revision:'',activity_id:'',status:'current',issued_at:''})}}>
+      <input placeholder="Drawing no" value={form.drawing_no} onChange={e=>setForm({...form,drawing_no:e.target.value})}/>
+      <input placeholder="Drawing title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}/>
+      <input placeholder="Revision" value={form.revision} onChange={e=>setForm({...form,revision:e.target.value})}/>
+      <select value={form.activity_id} onChange={e=>setForm({...form,activity_id:e.target.value})}><option value="">General project</option>{activities.map(a=><option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select>
+      <select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="current">Current</option><option value="superseded">Superseded</option><option value="hold">Hold</option><option value="approved">Approved</option></select>
+      <input type="date" value={form.issued_at} onChange={e=>setForm({...form,issued_at:e.target.value})}/>
+      <button>Add drawing</button>
+    </form>
+    <table><thead><tr><th>No</th><th>Title</th><th>Rev</th><th>Activity</th><th>Issued</th><th>Status</th></tr></thead><tbody>{visible.map(x=><tr key={x.id}><td>{x.drawing_no}</td><td>{x.title}</td><td>{x.revision}</td><td>{activityLabel(activities,x.activity_id)}</td><td>{x.issued_at||'—'}</td><td>{x.status}</td></tr>)}</tbody></table>
+  </section>
+}
+
+function Rfis({rows,activities,query,onCreate}){
+  const [form,setForm]=useState({rfi_no:'',subject:'',activity_id:'',status:'open',priority:'normal',due_date:''})
+  const visible=rows.filter(x=>`${x.rfi_no} ${x.subject} ${x.status} ${x.priority}`.toLowerCase().includes(query.toLowerCase()))
+  return <section className="panel"><h2>RFI & Issue Register</h2>
+    <form className="form register-form" onSubmit={e=>{e.preventDefault();onCreate(form);setForm({rfi_no:'',subject:'',activity_id:'',status:'open',priority:'normal',due_date:''})}}>
+      <input placeholder="RFI no" value={form.rfi_no} onChange={e=>setForm({...form,rfi_no:e.target.value})}/>
+      <input placeholder="Subject" value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}/>
+      <select value={form.activity_id} onChange={e=>setForm({...form,activity_id:e.target.value})}><option value="">General project</option>{activities.map(a=><option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select>
+      <select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="open">Open</option><option value="answered">Answered</option><option value="closed">Closed</option></select>
+      <select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select>
+      <input type="date" value={form.due_date} onChange={e=>setForm({...form,due_date:e.target.value})}/>
+      <button>Add RFI</button>
+    </form>
+    <table><thead><tr><th>No</th><th>Subject</th><th>Activity</th><th>Priority</th><th>Due</th><th>Status</th></tr></thead><tbody>{visible.map(x=><tr key={x.id}><td>{x.rfi_no}</td><td>{x.subject}</td><td>{activityLabel(activities,x.activity_id)}</td><td>{x.priority}</td><td>{x.due_date||'—'}</td><td>{x.status}</td></tr>)}</tbody></table>
+  </section>
 }
 
 function Card({title,value}){return <section className="card"><small>{title}</small><strong>{value}</strong></section>}
