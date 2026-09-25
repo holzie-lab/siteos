@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { isConfigured, supabase } from './lib/supabase'
-import { calculateStock, normalizeActivity, normalizeArea, normalizeDailyReport, normalizeDrawing, normalizeMaterial, normalizeMaterialMovement, normalizeProject, normalizeQuality, normalizeRfi, validateActivity, validateArea, validateDailyReport, validateDrawing, validateMaterial, validateMaterialMovement, validateProject, validateQuality, validateRfi } from './lib/domain'
+import { PROJECT_ROLES, calculateStock, normalizeActivity, normalizeArea, normalizeDailyReport, normalizeDrawing, normalizeMaterial, normalizeMaterialMovement, normalizeMembership, normalizeProject, normalizeQuality, normalizeRfi, validateActivity, validateArea, validateDailyReport, validateDrawing, validateMaterial, validateMaterialMovement, validateMembership, validateProject, validateQuality, validateRfi } from './lib/domain'
 import { parseXerText } from './lib/xer'
 
 const modules = [
@@ -33,6 +33,10 @@ const demo = {
     {id:'demo-mat-1',project_id:'demo-project',code:'MAT-001',name:'Demo Reinforcement Steel',unit:'t',minimum_stock:5},
     {id:'demo-mat-2',project_id:'demo-project',code:'MAT-002',name:'Demo Concrete Additive',unit:'t',minimum_stock:2}
   ],
+  memberships:[
+    {id:'demo-member-1',project_id:'demo-project',user_id:'00000000-0000-4000-8000-000000000001',role:'admin'},
+    {id:'demo-member-2',project_id:'demo-project',user_id:'00000000-0000-4000-8000-000000000002',role:'viewer'}
+  ],
   materialMovements:[
     {id:'demo-move-1',project_id:'demo-project',material_id:'demo-mat-1',activity_id:'demo-act-1',movement_type:'in',quantity:12,movement_date:'2026-09-24',reference_no:'DEMO-GRN-001',notes:'Synthetic receipt'},
     {id:'demo-move-2',project_id:'demo-project',material_id:'demo-mat-1',activity_id:'demo-act-1',movement_type:'out',quantity:3,movement_date:'2026-09-25',reference_no:'DEMO-ISS-001',notes:'Synthetic issue'}
@@ -51,6 +55,7 @@ export default function App(){
   const [dailyReports,setDailyReports]=useState(demo.dailyReports)
   const [materials,setMaterials]=useState(demo.materials)
   const [materialMovements,setMaterialMovements]=useState(demo.materialMovements)
+  const [memberships,setMemberships]=useState(demo.memberships)
   const [activeProjectId,setActiveProjectId]=useState(demo.projects[0].id)
   const [loading,setLoading]=useState(false)
   const [message,setMessage]=useState(isConfigured ? '' : 'Demo mode: configure Supabase to persist data.')
@@ -59,7 +64,7 @@ export default function App(){
 
   async function loadData(){
     setLoading(true)
-    const [p,a,w,q,d,r,dr,m,mm]=await Promise.all([
+    const [p,a,w,q,d,r,dr,m,mm,pm]=await Promise.all([
       supabase.from('projects').select('*').order('code'),
       supabase.from('areas').select('*').order('code'),
       supabase.from('activities').select('*').order('code'),
@@ -68,11 +73,12 @@ export default function App(){
       supabase.from('rfis').select('*').order('rfi_no'),
       supabase.from('daily_reports').select('*').order('report_date',{ascending:false}),
       supabase.from('materials').select('*').order('code'),
-      supabase.from('material_movements').select('*').order('movement_date',{ascending:false})
+      supabase.from('material_movements').select('*').order('movement_date',{ascending:false}),
+      supabase.from('project_memberships').select('*').order('created_at')
     ])
-    const error=p.error||a.error||w.error||q.error||d.error||r.error||dr.error||m.error||mm.error
+    const error=p.error||a.error||w.error||q.error||d.error||r.error||dr.error||m.error||mm.error||pm.error
     if(error){setMessage(error.message);setLoading(false);return}
-    setProjects(p.data||[]);setAreas(a.data||[]);setActivities(w.data||[]);setQuality(q.data||[]);setDrawings(d.data||[]);setRfis(r.data||[]);setDailyReports(dr.data||[]);setMaterials(m.data||[]);setMaterialMovements(mm.data||[])
+    setProjects(p.data||[]);setAreas(a.data||[]);setActivities(w.data||[]);setQuality(q.data||[]);setDrawings(d.data||[]);setRfis(r.data||[]);setDailyReports(dr.data||[]);setMaterials(m.data||[]);setMaterialMovements(mm.data||[]);setMemberships(pm.data||[])
     setActiveProjectId(current => (p.data||[]).some(x=>x.id===current) ? current : p.data?.[0]?.id || '')
     setMessage('');setLoading(false)
   }
@@ -87,6 +93,7 @@ export default function App(){
   const projectReports=dailyReports.filter(x=>x.project_id===activeProjectId)
   const projectMaterials=materials.filter(x=>x.project_id===activeProjectId)
   const projectMovements=materialMovements.filter(x=>x.project_id===activeProjectId)
+  const projectMemberships=memberships.filter(x=>x.project_id===activeProjectId)
 
   async function createProject(values){
     const normalized=normalizeProject(values); const errors=validateProject(normalized)
@@ -186,6 +193,16 @@ export default function App(){
     setMaterialMovements(x=>[data,...x]);setMessage('Stock movement saved.')
   }
 
+  async function createMembership(values){
+    if(!activeProjectId)return setMessage('Create or select a project first.')
+    const normalized=normalizeMembership({...values,project_id:activeProjectId}); const errors=validateMembership(normalized)
+    if(errors.length)return setMessage(errors.join(' '))
+    if(!isConfigured){setMemberships(x=>[...x,{id:crypto.randomUUID(),...normalized}]);setMessage('Project member added in demo mode.');return}
+    const {data,error}=await supabase.from('project_memberships').insert(normalized).select('*').single()
+    if(error)return setMessage(error.message)
+    setMemberships(x=>[...x,data]);setMessage('Project member saved.')
+  }
+
   return <div className="shell">
     <aside>
       <div className="brand">SiteOS</div>
@@ -211,7 +228,8 @@ export default function App(){
       {page==='reports'&&<DailyReports rows={projectReports} activities={projectActivities} query={query} onCreate={createDailyReport} />}
       {page==='materials'&&<Materials rows={projectMaterials} movements={projectMovements} activities={projectActivities} query={query} onMaterial={createMaterial} onMovement={createMaterialMovement} />}
       {page==='schedule'&&<Schedule />}
-      {!['today','projects','activities','quality','drawings','rfis','reports','materials','schedule'].includes(page)&&<Empty title={modules.find(x=>x[0]===page)?.[1]} />}
+      {page==='team'&&<Team rows={projectMemberships} onCreate={createMembership} />}
+      {!['today','projects','activities','quality','drawings','rfis','reports','materials','schedule','team'].includes(page)&&<Empty title={modules.find(x=>x[0]===page)?.[1]} />}
     </main>
   </div>
 }
@@ -365,6 +383,20 @@ function Materials({rows,movements,activities,query,onMaterial,onMovement}){
       <table><thead><tr><th>Date</th><th>Material</th><th>Type</th><th>Quantity</th><th>Activity</th><th>Reference</th></tr></thead><tbody>{movements.map(x=>{const m=rows.find(r=>r.id===x.material_id);return <tr key={x.id}><td>{x.movement_date}</td><td>{m?`${m.code} · ${m.name}`:'—'}</td><td>{x.movement_type}</td><td>{x.quantity} {m?.unit||''}</td><td>{activityLabel(activities,x.activity_id)}</td><td>{x.reference_no||'—'}</td></tr>})}</tbody></table>
     </section>
   </div>
+}
+
+
+function Team({rows,onCreate}){
+  const [form,setForm]=useState({user_id:'',role:'viewer'})
+  return <section className="panel"><h2>Project Team</h2>
+    <p>Membership is project-scoped. Database RLS enforces access; this screen is only a management surface.</p>
+    <form className="form compact" onSubmit={e=>{e.preventDefault();onCreate(form);setForm({user_id:'',role:'viewer'})}}>
+      <input placeholder="User UUID" value={form.user_id} onChange={e=>setForm({...form,user_id:e.target.value})}/>
+      <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>{PROJECT_ROLES.map(role=><option key={role} value={role}>{role}</option>)}</select>
+      <button>Add member</button>
+    </form>
+    <table><thead><tr><th>User ID</th><th>Role</th></tr></thead><tbody>{rows.map(x=><tr key={x.id}><td>{x.user_id}</td><td>{x.role}</td></tr>)}</tbody></table>
+  </section>
 }
 
 function Schedule(){
