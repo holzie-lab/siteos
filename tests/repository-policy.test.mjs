@@ -39,3 +39,9 @@ test('tracked text does not contain common credential material', () => {
   }
   assert.deepEqual([...new Set(findings)], [])
 })
+
+test('Supabase policies do not use unrestricted authenticated access', () => {
+  const sql = readFileSync('supabase/setup.sql', 'utf8')
+  assert.equal(/using\s*\(\s*true\s*\)/i.test(sql), false)
+  assert.equal(/with\s+check\s*\(\s*true\s*\)/i.test(sql), false)
+})
