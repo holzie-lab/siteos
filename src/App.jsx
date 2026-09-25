@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { isConfigured, supabase } from './lib/supabase'
 import { normalizeActivity, normalizeArea, normalizeDrawing, normalizeProject, normalizeQuality, normalizeRfi, validateActivity, validateArea, validateDrawing, validateProject, validateQuality, validateRfi } from './lib/domain'
+import { parseXerText } from './lib/xer'
 
 const modules = [
   ['today','Today'],['projects','Projects'],['activities','Activities'],['reports','Daily Reports'],
@@ -157,7 +158,8 @@ export default function App(){
       {page==='quality'&&<Quality rows={projectQuality} activities={projectActivities} query={query} onCreate={createQuality} />}
       {page==='drawings'&&<Drawings rows={projectDrawings} activities={projectActivities} query={query} onCreate={createDrawing} />}
       {page==='rfis'&&<Rfis rows={projectRfis} activities={projectActivities} query={query} onCreate={createRfi} />}
-      {!['today','projects','activities','quality','drawings','rfis'].includes(page)&&<Empty title={modules.find(x=>x[0]===page)?.[1]} />}
+      {page==='schedule'&&<Schedule />}
+      {!['today','projects','activities','quality','drawings','rfis','schedule'].includes(page)&&<Empty title={modules.find(x=>x[0]===page)?.[1]} />}
     </main>
   </div>
 }
@@ -260,6 +262,48 @@ function Rfis({rows,activities,query,onCreate}){
     </form>
     <table><thead><tr><th>No</th><th>Subject</th><th>Activity</th><th>Priority</th><th>Due</th><th>Status</th></tr></thead><tbody>{visible.map(x=><tr key={x.id}><td>{x.rfi_no}</td><td>{x.subject}</td><td>{activityLabel(activities,x.activity_id)}</td><td>{x.priority}</td><td>{x.due_date||'—'}</td><td>{x.status}</td></tr>)}</tbody></table>
   </section>
+}
+
+
+function Schedule(){
+  const [schedule,setSchedule]=useState(null)
+  const [error,setError]=useState('')
+
+  async function loadFile(e){
+    const file=e.target.files?.[0]
+    if(!file)return
+    setError('');setSchedule(null)
+    if(!file.name.toLowerCase().endsWith('.xer')){setError('Select a .xer file.');return}
+    if(file.size>25*1024*1024){setError('XER file must be 25 MB or smaller.');return}
+    try{
+      const text=await file.text()
+      setSchedule(parseXerText(text))
+    }catch(err){
+      setError(err.message||'XER could not be parsed.')
+    }finally{
+      e.target.value=''
+    }
+  }
+
+  return <div className="stack">
+    <section className="panel">
+      <h2>P6 XER Preview</h2>
+      <p>Select a local XER export for in-browser preview. The selected file is not committed to the repository and this preview does not persist the original file.</p>
+      <input type="file" accept=".xer,text/plain" onChange={loadFile}/>
+      {error&&<div className="notice">{error}</div>}
+    </section>
+    {schedule&&<>
+      <div className="grid">
+        <Card title="Projects" value={schedule.summary.project_count}/>
+        <Card title="WBS" value={schedule.summary.wbs_count}/>
+        <Card title="Activities" value={schedule.summary.activity_count}/>
+        <Card title="Critical / ≤0 float" value={schedule.summary.critical_count}/>
+      </div>
+      <section className="panel"><h2>Projects</h2><table><thead><tr><th>Code</th><th>Name</th><th>Data Date</th></tr></thead><tbody>{schedule.projects.map(x=><tr key={x.id}><td>{x.code}</td><td>{x.name}</td><td>{x.data_date||'—'}</td></tr>)}</tbody></table></section>
+      <section className="panel"><h2>Activities</h2><table><thead><tr><th>ID</th><th>Name</th><th>WBS</th><th>Status</th><th>Physical %</th><th>Total Float</th><th>Start</th><th>Finish</th></tr></thead><tbody>{schedule.activities.slice(0,200).map(x=><tr key={x.id}><td>{x.code}</td><td>{x.name}</td><td>{x.wbs_code||'—'}</td><td>{x.status}</td><td>{x.physical_percent??'—'}</td><td>{x.total_float_hours??'—'} h</td><td>{x.planned_start||'—'}</td><td>{x.planned_end||'—'}</td></tr>)}</tbody></table></section>
+      <section className="panel"><h2>Relationships</h2><table><thead><tr><th>Predecessor</th><th>Type</th><th>Successor</th><th>Lag</th></tr></thead><tbody>{schedule.relationships.slice(0,200).map((x,i)=><tr key={i}><td>{x.predecessor_code||x.predecessor_id}</td><td>{x.type}</td><td>{x.successor_code||x.successor_id}</td><td>{x.lag_hours} h</td></tr>)}</tbody></table></section>
+    </>}
+  </div>
 }
 
 function Card({title,value}){return <section className="card"><small>{title}</small><strong>{value}</strong></section>}
