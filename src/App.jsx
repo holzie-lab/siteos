@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { isConfigured, supabase } from './lib/supabase'
-import { normalizeActivity, normalizeArea, normalizeDrawing, normalizeProject, normalizeQuality, normalizeRfi, validateActivity, validateArea, validateDrawing, validateProject, validateQuality, validateRfi } from './lib/domain'
+import { calculateStock, normalizeActivity, normalizeArea, normalizeDailyReport, normalizeDrawing, normalizeMaterial, normalizeMaterialMovement, normalizeProject, normalizeQuality, normalizeRfi, validateActivity, validateArea, validateDailyReport, validateDrawing, validateMaterial, validateMaterialMovement, validateProject, validateQuality, validateRfi } from './lib/domain'
 import { parseXerText } from './lib/xer'
 
 const modules = [
@@ -25,6 +25,17 @@ const demo = {
   ],
   rfis:[
     {id:'demo-rfi-1',project_id:'demo-project',activity_id:'demo-act-2',rfi_no:'RFI-001',subject:'Clarify interface detail',status:'open',priority:'normal',due_date:'2026-09-30'}
+  ],
+  dailyReports:[
+    {id:'demo-report-1',project_id:'demo-project',activity_id:'demo-act-1',report_date:'2026-09-25',weather:'Clear',manpower:12,progress_notes:'Synthetic progress update for Nova Build Demo.',shift_notes:'No safety incidents in demo data.',status:'submitted'}
+  ],
+  materials:[
+    {id:'demo-mat-1',project_id:'demo-project',code:'MAT-001',name:'Demo Reinforcement Steel',unit:'t',minimum_stock:5},
+    {id:'demo-mat-2',project_id:'demo-project',code:'MAT-002',name:'Demo Concrete Additive',unit:'t',minimum_stock:2}
+  ],
+  materialMovements:[
+    {id:'demo-move-1',project_id:'demo-project',material_id:'demo-mat-1',activity_id:'demo-act-1',movement_type:'in',quantity:12,movement_date:'2026-09-24',reference_no:'DEMO-GRN-001',notes:'Synthetic receipt'},
+    {id:'demo-move-2',project_id:'demo-project',material_id:'demo-mat-1',activity_id:'demo-act-1',movement_type:'out',quantity:3,movement_date:'2026-09-25',reference_no:'DEMO-ISS-001',notes:'Synthetic issue'}
   ]
 }
 
@@ -37,6 +48,9 @@ export default function App(){
   const [quality,setQuality]=useState(demo.quality)
   const [drawings,setDrawings]=useState(demo.drawings)
   const [rfis,setRfis]=useState(demo.rfis)
+  const [dailyReports,setDailyReports]=useState(demo.dailyReports)
+  const [materials,setMaterials]=useState(demo.materials)
+  const [materialMovements,setMaterialMovements]=useState(demo.materialMovements)
   const [activeProjectId,setActiveProjectId]=useState(demo.projects[0].id)
   const [loading,setLoading]=useState(false)
   const [message,setMessage]=useState(isConfigured ? '' : 'Demo mode: configure Supabase to persist data.')
@@ -45,17 +59,20 @@ export default function App(){
 
   async function loadData(){
     setLoading(true)
-    const [p,a,w,q,d,r]=await Promise.all([
+    const [p,a,w,q,d,r,dr,m,mm]=await Promise.all([
       supabase.from('projects').select('*').order('code'),
       supabase.from('areas').select('*').order('code'),
       supabase.from('activities').select('*').order('code'),
       supabase.from('quality_records').select('*').order('record_no'),
       supabase.from('drawings').select('*').order('drawing_no'),
-      supabase.from('rfis').select('*').order('rfi_no')
+      supabase.from('rfis').select('*').order('rfi_no'),
+      supabase.from('daily_reports').select('*').order('report_date',{ascending:false}),
+      supabase.from('materials').select('*').order('code'),
+      supabase.from('material_movements').select('*').order('movement_date',{ascending:false})
     ])
-    const error=p.error||a.error||w.error||q.error||d.error||r.error
+    const error=p.error||a.error||w.error||q.error||d.error||r.error||dr.error||m.error||mm.error
     if(error){setMessage(error.message);setLoading(false);return}
-    setProjects(p.data||[]);setAreas(a.data||[]);setActivities(w.data||[]);setQuality(q.data||[]);setDrawings(d.data||[]);setRfis(r.data||[])
+    setProjects(p.data||[]);setAreas(a.data||[]);setActivities(w.data||[]);setQuality(q.data||[]);setDrawings(d.data||[]);setRfis(r.data||[]);setDailyReports(dr.data||[]);setMaterials(m.data||[]);setMaterialMovements(mm.data||[])
     setActiveProjectId(current => (p.data||[]).some(x=>x.id===current) ? current : p.data?.[0]?.id || '')
     setMessage('');setLoading(false)
   }
@@ -67,6 +84,9 @@ export default function App(){
   const projectQuality=quality.filter(x=>x.project_id===activeProjectId)
   const projectDrawings=drawings.filter(x=>x.project_id===activeProjectId)
   const projectRfis=rfis.filter(x=>x.project_id===activeProjectId)
+  const projectReports=dailyReports.filter(x=>x.project_id===activeProjectId)
+  const projectMaterials=materials.filter(x=>x.project_id===activeProjectId)
+  const projectMovements=materialMovements.filter(x=>x.project_id===activeProjectId)
 
   async function createProject(values){
     const normalized=normalizeProject(values); const errors=validateProject(normalized)
@@ -136,6 +156,36 @@ export default function App(){
     setRfis(x=>[...x,data]);setMessage('RFI saved.')
   }
 
+  async function createDailyReport(values){
+    if(!activeProjectId)return setMessage('Create or select a project first.')
+    const normalized=normalizeDailyReport({...values,project_id:activeProjectId}); const errors=validateDailyReport(normalized)
+    if(errors.length)return setMessage(errors.join(' '))
+    if(!isConfigured){setDailyReports(x=>[{id:crypto.randomUUID(),...normalized},...x]);setMessage('Daily report added in demo mode.');return}
+    const {data,error}=await supabase.from('daily_reports').insert(normalized).select('*').single()
+    if(error)return setMessage(error.message)
+    setDailyReports(x=>[data,...x]);setMessage('Daily report saved.')
+  }
+
+  async function createMaterial(values){
+    if(!activeProjectId)return setMessage('Create or select a project first.')
+    const normalized=normalizeMaterial({...values,project_id:activeProjectId}); const errors=validateMaterial(normalized)
+    if(errors.length)return setMessage(errors.join(' '))
+    if(!isConfigured){setMaterials(x=>[...x,{id:crypto.randomUUID(),...normalized}]);setMessage('Material added in demo mode.');return}
+    const {data,error}=await supabase.from('materials').insert(normalized).select('*').single()
+    if(error)return setMessage(error.message)
+    setMaterials(x=>[...x,data]);setMessage('Material saved.')
+  }
+
+  async function createMaterialMovement(values){
+    if(!activeProjectId)return setMessage('Create or select a project first.')
+    const normalized=normalizeMaterialMovement({...values,project_id:activeProjectId}); const errors=validateMaterialMovement(normalized)
+    if(errors.length)return setMessage(errors.join(' '))
+    if(!isConfigured){setMaterialMovements(x=>[{id:crypto.randomUUID(),...normalized},...x]);setMessage('Stock movement added in demo mode.');return}
+    const {data,error}=await supabase.from('material_movements').insert(normalized).select('*').single()
+    if(error)return setMessage(error.message)
+    setMaterialMovements(x=>[data,...x]);setMessage('Stock movement saved.')
+  }
+
   return <div className="shell">
     <aside>
       <div className="brand">SiteOS</div>
@@ -158,8 +208,10 @@ export default function App(){
       {page==='quality'&&<Quality rows={projectQuality} activities={projectActivities} query={query} onCreate={createQuality} />}
       {page==='drawings'&&<Drawings rows={projectDrawings} activities={projectActivities} query={query} onCreate={createDrawing} />}
       {page==='rfis'&&<Rfis rows={projectRfis} activities={projectActivities} query={query} onCreate={createRfi} />}
+      {page==='reports'&&<DailyReports rows={projectReports} activities={projectActivities} query={query} onCreate={createDailyReport} />}
+      {page==='materials'&&<Materials rows={projectMaterials} movements={projectMovements} activities={projectActivities} query={query} onMaterial={createMaterial} onMovement={createMaterialMovement} />}
       {page==='schedule'&&<Schedule />}
-      {!['today','projects','activities','quality','drawings','rfis','schedule'].includes(page)&&<Empty title={modules.find(x=>x[0]===page)?.[1]} />}
+      {!['today','projects','activities','quality','drawings','rfis','reports','materials','schedule'].includes(page)&&<Empty title={modules.find(x=>x[0]===page)?.[1]} />}
     </main>
   </div>
 }
@@ -264,6 +316,56 @@ function Rfis({rows,activities,query,onCreate}){
   </section>
 }
 
+
+
+function DailyReports({rows,activities,query,onCreate}){
+  const [form,setForm]=useState({report_date:'',weather:'',manpower:0,progress_notes:'',shift_notes:'',activity_id:'',status:'draft'})
+  const visible=rows.filter(x=>`${x.report_date} ${x.weather||''} ${x.progress_notes} ${x.status}`.toLowerCase().includes(query.toLowerCase()))
+  return <section className="panel"><h2>Daily Reports</h2>
+    <form className="form register-form" onSubmit={e=>{e.preventDefault();onCreate(form);setForm({report_date:'',weather:'',manpower:0,progress_notes:'',shift_notes:'',activity_id:'',status:'draft'})}}>
+      <input type="date" value={form.report_date} onChange={e=>setForm({...form,report_date:e.target.value})}/>
+      <select value={form.activity_id} onChange={e=>setForm({...form,activity_id:e.target.value})}><option value="">General project</option>{activities.map(a=><option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select>
+      <input placeholder="Weather" value={form.weather} onChange={e=>setForm({...form,weather:e.target.value})}/>
+      <input type="number" min="0" placeholder="Manpower" value={form.manpower} onChange={e=>setForm({...form,manpower:e.target.value})}/>
+      <input placeholder="Progress notes" value={form.progress_notes} onChange={e=>setForm({...form,progress_notes:e.target.value})}/>
+      <input placeholder="Shift notes" value={form.shift_notes} onChange={e=>setForm({...form,shift_notes:e.target.value})}/>
+      <select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="draft">Draft</option><option value="submitted">Submitted</option><option value="approved">Approved</option></select>
+      <button>Add report</button>
+    </form>
+    <table><thead><tr><th>Date</th><th>Activity</th><th>Weather</th><th>Manpower</th><th>Progress</th><th>Status</th></tr></thead><tbody>{visible.map(x=><tr key={x.id}><td>{x.report_date}</td><td>{activityLabel(activities,x.activity_id)}</td><td>{x.weather||'—'}</td><td>{x.manpower}</td><td>{x.progress_notes}</td><td>{x.status}</td></tr>)}</tbody></table>
+  </section>
+}
+
+function Materials({rows,movements,activities,query,onMaterial,onMovement}){
+  const [material,setMaterial]=useState({code:'',name:'',unit:'',minimum_stock:0})
+  const [move,setMove]=useState({material_id:'',activity_id:'',movement_type:'in',quantity:'',movement_date:'',reference_no:'',notes:''})
+  const visible=rows.filter(x=>`${x.code} ${x.name} ${x.unit}`.toLowerCase().includes(query.toLowerCase()))
+  return <div className="stack">
+    <section className="panel"><h2>Material Master</h2>
+      <form className="form" onSubmit={e=>{e.preventDefault();onMaterial(material);setMaterial({code:'',name:'',unit:'',minimum_stock:0})}}>
+        <input placeholder="Material code" value={material.code} onChange={e=>setMaterial({...material,code:e.target.value})}/>
+        <input placeholder="Material name" value={material.name} onChange={e=>setMaterial({...material,name:e.target.value})}/>
+        <input placeholder="Unit" value={material.unit} onChange={e=>setMaterial({...material,unit:e.target.value})}/>
+        <input type="number" min="0" step="0.01" placeholder="Minimum stock" value={material.minimum_stock} onChange={e=>setMaterial({...material,minimum_stock:e.target.value})}/>
+        <button>Add material</button>
+      </form>
+      <table><thead><tr><th>Code</th><th>Name</th><th>Unit</th><th>Current Stock</th><th>Minimum</th><th>Status</th></tr></thead><tbody>{visible.map(x=>{const stock=calculateStock(x.id,movements);return <tr key={x.id}><td>{x.code}</td><td>{x.name}</td><td>{x.unit}</td><td>{stock}</td><td>{x.minimum_stock}</td><td>{stock<Number(x.minimum_stock)?'Low':'OK'}</td></tr>})}</tbody></table>
+    </section>
+    <section className="panel"><h2>Stock Movements</h2>
+      <form className="form register-form" onSubmit={e=>{e.preventDefault();onMovement(move);setMove({material_id:'',activity_id:'',movement_type:'in',quantity:'',movement_date:'',reference_no:'',notes:''})}}>
+        <select value={move.material_id} onChange={e=>setMove({...move,material_id:e.target.value})}><option value="">Select material</option>{rows.map(m=><option key={m.id} value={m.id}>{m.code} · {m.name}</option>)}</select>
+        <select value={move.activity_id} onChange={e=>setMove({...move,activity_id:e.target.value})}><option value="">General project</option>{activities.map(a=><option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}</select>
+        <select value={move.movement_type} onChange={e=>setMove({...move,movement_type:e.target.value})}><option value="in">Stock In</option><option value="out">Stock Out</option></select>
+        <input type="number" min="0.01" step="0.01" placeholder="Quantity" value={move.quantity} onChange={e=>setMove({...move,quantity:e.target.value})}/>
+        <input type="date" value={move.movement_date} onChange={e=>setMove({...move,movement_date:e.target.value})}/>
+        <input placeholder="Reference no" value={move.reference_no} onChange={e=>setMove({...move,reference_no:e.target.value})}/>
+        <input placeholder="Notes" value={move.notes} onChange={e=>setMove({...move,notes:e.target.value})}/>
+        <button>Add movement</button>
+      </form>
+      <table><thead><tr><th>Date</th><th>Material</th><th>Type</th><th>Quantity</th><th>Activity</th><th>Reference</th></tr></thead><tbody>{movements.map(x=>{const m=rows.find(r=>r.id===x.material_id);return <tr key={x.id}><td>{x.movement_date}</td><td>{m?`${m.code} · ${m.name}`:'—'}</td><td>{x.movement_type}</td><td>{x.quantity} {m?.unit||''}</td><td>{activityLabel(activities,x.activity_id)}</td><td>{x.reference_no||'—'}</td></tr>})}</tbody></table>
+    </section>
+  </div>
+}
 
 function Schedule(){
   const [schedule,setSchedule]=useState(null)
