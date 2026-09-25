@@ -108,3 +108,69 @@ export function validateRfi(row){
   if(!new Set(['low','normal','high']).has(row.priority)) errors.push('RFI priority is invalid.')
   return errors
 }
+
+export function normalizeDailyReport(input){
+  return {
+    project_id: input.project_id,
+    activity_id: input.activity_id || null,
+    report_date: input.report_date || null,
+    weather: trim(input.weather) || null,
+    manpower: Number(input.manpower || 0),
+    progress_notes: trim(input.progress_notes),
+    shift_notes: trim(input.shift_notes) || null,
+    status: input.status || 'draft'
+  }
+}
+export function validateDailyReport(row){
+  const errors=[]
+  if(!row.project_id) errors.push('Project is required.')
+  if(!row.report_date) errors.push('Report date is required.')
+  if(!Number.isFinite(row.manpower)||row.manpower<0) errors.push('Manpower must be zero or greater.')
+  if(!row.progress_notes) errors.push('Progress notes are required.')
+  if(!new Set(['draft','submitted','approved']).has(row.status)) errors.push('Daily report status is invalid.')
+  return errors
+}
+export function normalizeMaterial(input){
+  return {
+    project_id: input.project_id,
+    code: trim(input.code).toUpperCase(),
+    name: trim(input.name),
+    unit: trim(input.unit),
+    minimum_stock: Number(input.minimum_stock || 0)
+  }
+}
+export function validateMaterial(row){
+  const errors=[]
+  if(!row.project_id) errors.push('Project is required.')
+  if(!row.code) errors.push('Material code is required.')
+  if(!row.name) errors.push('Material name is required.')
+  if(!row.unit) errors.push('Material unit is required.')
+  if(!Number.isFinite(row.minimum_stock)||row.minimum_stock<0) errors.push('Minimum stock must be zero or greater.')
+  return errors
+}
+export function normalizeMaterialMovement(input){
+  return {
+    project_id: input.project_id,
+    material_id: input.material_id,
+    activity_id: input.activity_id || null,
+    movement_type: input.movement_type || 'in',
+    quantity: Number(input.quantity),
+    movement_date: input.movement_date || null,
+    reference_no: trim(input.reference_no) || null,
+    notes: trim(input.notes) || null
+  }
+}
+export function validateMaterialMovement(row){
+  const errors=[]
+  if(!row.project_id) errors.push('Project is required.')
+  if(!row.material_id) errors.push('Material is required.')
+  if(!new Set(['in','out']).has(row.movement_type)) errors.push('Movement type is invalid.')
+  if(!Number.isFinite(row.quantity)||row.quantity<=0) errors.push('Quantity must be greater than zero.')
+  if(!row.movement_date) errors.push('Movement date is required.')
+  return errors
+}
+export function calculateStock(materialId, movements){
+  return movements
+    .filter(x=>x.material_id===materialId)
+    .reduce((sum,row)=>sum+(row.movement_type==='in'?Number(row.quantity):-Number(row.quantity)),0)
+}
